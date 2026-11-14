@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const validator = require("validator");
 
 // random cartoon avatar, used when no profile photo is given
 const styles = ['adventurer', 'big-smile', 'fun-emoji', 'lorelei', 'pixel-art'];
@@ -21,8 +22,13 @@ const userSchema = new mongoose.Schema(
       required: [true, 'Email is required'],
       unique: true,
       lowercase: true,
+      validate: {
+        validator: (value) => validator.isEmail(value),
+        message: "Please enter a valid email address"
+      },
       trim: true,
     },
+    isVerified: { type: Boolean, default: false },
     password: {
       type: String,
       required: [true, 'Password is required'],
