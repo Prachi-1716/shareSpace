@@ -12,12 +12,9 @@ router.get("/me", protect, (req, res)=>{
     });
 });
 
-router.get("/me/items", protect, getMyItems);
-router.get("/me/:id", getPublicProfile);
-
-
 router.patch('/me', protect, upload.single('profilePhoto'), updateMe);
+router.get("/me/items", protect, getMyItems);
 router.patch('/me/password', protect, changePassword);
-
+router.get("/:id", getPublicProfile);
 
 module.exports = router
