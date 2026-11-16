@@ -27,7 +27,7 @@ app.use(express.json());
 app.get("/", (req, res)=>{
     res.send("welcome to sharespace");
 });
-
+app.use("/api/items", require("./routes/itermRoutes"));
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/users", require("./routes/userRoutes"));
 

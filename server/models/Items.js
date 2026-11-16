@@ -19,6 +19,10 @@ const itemSchema = new mongoose.Schema(
             required: true,
             validate: [(arr) => arr.length > 0, 'At least one image is required'],
         },
+        imagePublicIds: {
+            type: [String],
+            default: []
+        },
         category: {
             type: String,
             required: true,
