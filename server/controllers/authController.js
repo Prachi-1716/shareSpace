@@ -1,7 +1,6 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
-const EmailVerification = require("../models/Otp");
 const asyncWrap = require("../utils/asyncWrap");
 const ExpressError = require("../utils/ExpressError");
 const validator = require("validator");
@@ -68,36 +67,59 @@ exports.verifyOtp = asyncWrap(async (req, res) => {
   const otp = String(req.body.otp || '');
 
   const record = await Otp.findOne({ email });
+
   if (!record || record.expiresAt < new Date()) {
     throw new ExpressError(400, 'OTP expired or not found. Please request a new one');
   }
+
   if (record.attempts >= 5) {
     await record.deleteOne();
     throw new ExpressError(429, 'Too many wrong attempts. Please request a new OTP');
   }
+
   if (!(await bcrypt.compare(otp, record.otpHash))) {
     record.attempts += 1;
     await record.save();
     throw new ExpressError(400, 'Incorrect OTP');
   }
 
-  await record.deleteOne();                                  // single use
+  const user = await User.findOne({ email });
 
-  const user = await User.findOneAndUpdate({ email }, { isVerified: true }, { new: true });
-  if (!user) throw new ExpressError(400, 'No account found for this email');
+  if (!user) {
+    throw new ExpressError(400, 'No account found for this email');
+  }
 
-  sendToken(user, 200, res);                                 // verified, so log them in
+  if (user.isVerified) {
+    throw new ExpressError(400, 'Email already verified');
+  }
+
+  user.isVerified = true;
+  await user.save();
+
+  await record.deleteOne();
+
+  sendToken(user, 200, res);
 });
+
 
 exports.resendOtp = asyncWrap(async (req, res) => {
   const email = (req.body.email || '').toLowerCase().trim();
-  if (!validator.isEmail(email)) throw new ExpressError(400, 'Please enter a valid email address');
+
+
+  if (!validator.isEmail(email)) {
+    throw new ExpressError(400, 'Please enter a valid email address');
+  }
 
   const user = await User.findOne({ email });
-  if (user && !user.isVerified) await issueOtp(email);
 
-  // same reply whether or not the account exists, so emails can't be probed
-  res.json({ success: true, message: 'If this email has an unverified account, an OTP has been sent' });
+  if (user && !user.isVerified) {
+    await issueOtp(email);
+  }
+
+  res.json({
+    success: true,
+    message: 'If this email has an unverified account, an OTP has been sent'
+  });
 });
 
 //Login
@@ -124,46 +146,3 @@ exports.logout = (req, res) => {
   res.json({ success: true, message: 'Logged out' });
 };
 
-//update profile
-const ALLOWED = ['name', 'contactNo', 'city', 'bio'];
-exports.updateMe = asyncWrap(async (req, res) => {
-  const updates = {};
-  ALLOWED.forEach((key) => {
-    if (req.body[key] !== undefined) updates[key] = req.body[key];
-  });
-
-  if (Object.keys(updates).length === 0) {
-    throw new ExpressError(400, 'Nothing to update');
-  }
-
-  const user = await User.findByIdAndUpdate(req.user._id, updates, {
-    new: true,             // return the document AFTER the update
-    runValidators: true,   // schema validators don't run on updates unless you ask
-  });
-
-  res.json({ success: true, user });
-});
-
-//update password
-exports.changePassword = asyncWrap(async (req, res) => {
-  const { currentPassword, newPassword } = req.body;
-
-  if (!currentPassword || !newPassword) {
-    throw new ExpressError(400, 'Current and new password are required');
-  }
-  if (newPassword.length < 6) {
-    throw new ExpressError(400, 'New password must be at least 6 characters');
-  }
-
-  // password is select:false, so request it explicitly
-  const user = await User.findById(req.user._id).select('+password');
-
-  if (!(await bcrypt.compare(currentPassword, user.password))) {
-    throw new ExpressError(400, 'Current password is incorrect');
-  }
-
-  user.password = await bcrypt.hash(newPassword, 10);
-  await user.save();
-
-  res.json({ success: true, message: 'Password updated' });
-});
